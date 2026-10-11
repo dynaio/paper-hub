@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local state (never commit these)
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Vault sample / personal papers
+Papers/
+*.pdf
+*.docx
+*.pptx
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~

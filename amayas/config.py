@@ -23,12 +23,13 @@ ALL_EXTS   = PDF_EXTS | DOC_EXTS | SLIDE_EXTS | SHEET_EXTS | TEXT_EXTS | IMAGE_E
 # ---- statuses for papers
 STATUSES = [
     "idea",
-    "drafting",
+    "in_work",
     "internal_review",
     "ready",
     "submitted",
     "in_review",
     "revision_requested",
+    "revised",
     "resubmitted",
     "accepted",
     "camera_ready",

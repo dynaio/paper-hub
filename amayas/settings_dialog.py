@@ -336,6 +336,19 @@ class SettingsDialog(QDialog):
         w = QWidget(); v = QVBoxLayout(w)
         v.setContentsMargins(10, 10, 10, 10); v.setSpacing(10)
 
+        v.addWidget(QLabel("Text editor (used for .md, .tex, code)"))
+        from PyQt6.QtWidgets import QLineEdit
+        self.editor_text = QLineEdit(self.settings.get("editor_text", "subl"))
+        self.editor_text.setPlaceholderText("subl, code, gedit, nano, …")
+        self.editor_text.textChanged.connect(
+            lambda t: (self.settings.set("editor_text", t),
+                       setattr(self, "changed", True)))
+        v.addWidget(self.editor_text)
+        v.addWidget(QLabel(
+            "PDFs open in the built-in viewer. Office files open in the "
+            "system default (OnlyOffice, LibreOffice, ...)."))
+        v.addSpacing(8)
+
         self.autolock = QCheckBox(
             "Lock new versions automatically (freeze hash)")
         self.autolock.setChecked(bool(self.settings.get("autolock_on_ready", True)))

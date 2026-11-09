@@ -1,8 +1,8 @@
 """PaperCard, DropZone, FlowContainer."""
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal, QMimeData
-from PyQt6.QtGui import QPixmap, QDrag
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QFrame, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QWidget,
     QSizePolicy,
@@ -11,10 +11,7 @@ from PyQt6.QtWidgets import (
 from .config import CARD_W, CARD_H, COVER_H
 
 
-# ------------------------------------------------------------ flow layout
 class FlowContainer(QWidget):
-    """Simple flow layout that grows in height inside a QVBoxLayout."""
-
     def __init__(self, h=18, v=18, parent=None):
         super().__init__(parent)
         self._h, self._v = h, v
@@ -25,8 +22,7 @@ class FlowContainer(QWidget):
     def clear(self):
         for w in self._items:
             w.setParent(None); w.deleteLater()
-        self._items = []
-        self.setFixedHeight(0)
+        self._items = []; self.setFixedHeight(0)
 
     def add(self, w):
         w.setParent(self); w.show()
@@ -52,11 +48,10 @@ class FlowContainer(QWidget):
             self.setFixedHeight(need)
 
 
-# ------------------------------------------------------------ card
 class PaperCard(QFrame):
-    open_requested = pyqtSignal(int)
-    drop_files = pyqtSignal(int, list)   # paper_id, list[Path]
-    edit_requested = pyqtSignal(int)
+    open_file_requested = pyqtSignal(int)     # click card body
+    versions_requested = pyqtSignal(int)      # click "N versions"
+    details_requested = pyqtSignal(int)       # click "..."
 
     def __init__(self, paper: dict, parent=None):
         super().__init__(parent)
@@ -65,13 +60,13 @@ class PaperCard(QFrame):
         self.setFixedSize(CARD_W, CARD_H)
         self.setAcceptDrops(True)
         self.setProperty("dragover", False)
+        self.setToolTip("Click to open   ·   ⋯ for details")
         self._build()
 
     def _build(self):
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 0, 0, 0); v.setSpacing(0)
 
-        # cover
         cover = QWidget(); cover.setObjectName("PaperCover")
         cover.setFixedHeight(COVER_H)
         cv = QVBoxLayout(cover); cv.setContentsMargins(0, 0, 0, 0)
@@ -85,27 +80,44 @@ class PaperCard(QFrame):
         cv.addWidget(img)
         v.addWidget(cover)
 
-        # body
         body = QWidget(); bv = QVBoxLayout(body)
         bv.setContentsMargins(12, 10, 12, 12); bv.setSpacing(6)
 
         title = QLabel(self.paper.get("title") or "Untitled")
         title.setObjectName("CardTitle"); title.setWordWrap(True)
-        title.setFixedHeight(38)
+        title.setFixedHeight(36)
         bv.addWidget(title)
 
-        authors = QLabel(self.paper.get("authors") or
-                         self.paper.get("venue_target") or "—")
+        authors = QLabel(self.paper.get("authors") or "—")
         authors.setObjectName("CardPath")
         bv.addWidget(authors)
 
-        meta = QLabel(self._meta_line())
-        meta.setObjectName("CardDesc")
-        bv.addWidget(meta)
+        ver_info = QLabel(self._version_info())
+        ver_info.setObjectName("CardVersion")
+        bv.addWidget(ver_info)
 
+        row = QHBoxLayout(); row.setSpacing(4)
+
+        self.versions_btn = QPushButton(self._versions_label())
+        self.versions_btn.setObjectName("CardBtn")
+        self.versions_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.versions_btn.setToolTip("Show all versions")
+        self.versions_btn.clicked.connect(
+            lambda: self.versions_requested.emit(self.paper["id"]))
+        row.addWidget(self.versions_btn, 1)
+
+        details_btn = QPushButton("⋯")
+        details_btn.setObjectName("CardBtn")
+        details_btn.setFixedWidth(32)
+        details_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        details_btn.setToolTip("Details, timeline, submit")
+        details_btn.clicked.connect(
+            lambda: self.details_requested.emit(self.paper["id"]))
+        row.addWidget(details_btn, 0)
+
+        bv.addLayout(row)
         v.addWidget(body)
 
-        # status pill
         s = self.paper.get("status") or "drafting"
         pill = QLabel(s.replace("_", " ").upper())
         pill.setObjectName(f"Status_{s}")
@@ -114,40 +126,46 @@ class PaperCard(QFrame):
         pill.adjustSize()
         pill.raise_()
 
-    def _meta_line(self):
-        s = []
-        if self.paper.get("year"):
-            s.append(str(self.paper["year"]))
-        if self.paper.get("venue_target"):
-            s.append(self.paper["venue_target"])
-        return " · ".join(s) or "—"
+    def _versions_label(self):
+        n = self.paper.get("_versions_count", 0)
+        if n == 0: return "no versions"
+        if n == 1: return "1 version"
+        return f"{n} versions"
+
+    def _version_info(self):
+        cur = self.paper.get("_current_version")
+        if not cur:
+            return "no file yet"
+        parts = [cur.get("label") or "v?"]
+        if cur.get("_is_final"):
+            parts.append("final")
+        elif cur.get("_is_locked"):
+            parts.append("locked")
+        pages = cur.get("page_count") or 0
+        if pages:
+            parts.append(f"{pages}p")
+        return "  ·  ".join(parts)
 
     def _cover_pixmap(self):
-        cover = None
-        # cover.png inside the paper folder
         from .vault import paper_folder
         try:
             folder = paper_folder(self.paper["id"], self.paper["title"])
         except Exception:
             return None
         cp = folder / "cover.png"
-        if cp.exists():
-            cover = cp
-        if cover is None:
+        if not cp.exists():
             return None
-        pix = QPixmap(str(cover))
+        pix = QPixmap(str(cp))
         if pix.isNull():
             return None
         return pix.scaled(CARD_W, COVER_H,
                           Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                           Qt.TransformationMode.SmoothTransformation)
 
-    # ---------- mouse
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
-            self.open_requested.emit(self.paper["id"])
+            self.open_file_requested.emit(self.paper["id"])
 
-    # ---------- drag and drop
     def _set_dragover(self, on):
         self.setProperty("dragover", on)
         self.style().unpolish(self); self.style().polish(self)
@@ -168,11 +186,11 @@ class PaperCard(QFrame):
             self.drop_files.emit(self.paper["id"], paths)
             e.acceptProposedAction()
 
+    drop_files = pyqtSignal(int, list)
 
-# ------------------------------------------------------------ drop zone
+
 class DropZone(QFrame):
-    """Full-width drop target at the top of the grid."""
-    files_dropped = pyqtSignal(list)   # list[Path]
+    files_dropped = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)

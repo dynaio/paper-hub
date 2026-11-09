@@ -41,6 +41,14 @@ class MainWindow(QMainWindow):
             pass
         self._build()
         self._apply_theme(self.settings.get("theme", "light"))
+        # one-time status migration: 'drafting' -> 'in_work'
+        try:
+            with self.db.conn() as _c:
+                _c.execute("UPDATE papers SET status='in_work' "
+                           "WHERE status='drafting'")
+            self.settings.set("migrate_drafting_to_in_work", True)
+        except Exception:
+            pass
         self.refresh()
         QTimer.singleShot(60, lambda: self._apply_overflow(self.width()))
 
@@ -242,6 +250,25 @@ class MainWindow(QMainWindow):
         q = self.search.text().strip()
         papers = self.db.papers_list(status=status, query=q)
 
+        # enrich each paper with version info for the card display
+        for _p in papers:
+            try:
+                _vs = self.db.versions_list(_p["id"])
+            except Exception:
+                _vs = []
+            _p["_versions_count"] = len(_vs)
+            _cur = None
+            if _p.get("canonical_id"):
+                _cur = next((v for v in _vs if v["id"] == _p["canonical_id"]), None)
+            if not _cur and _vs:
+                _cur = _vs[-1]
+            if _cur:
+                _c = dict(_cur)
+                _c["_is_final"] = (_cur["id"] == _p.get("canonical_id"))
+                _c["_is_locked"] = bool(_cur.get("frozen_hash"))
+                _p["_current_version"] = _c
+            _p["_versions"] = _vs
+
         stats = self.db.stats()
         self.count_lbl.setText(
             f"{stats['total']} papers  ·  {stats['ready']} ready  ·  "
@@ -259,7 +286,9 @@ class MainWindow(QMainWindow):
         self.panel_v.addWidget(flow)
         for p in papers:
             card = PaperCard(p)
-            card.open_requested.connect(self._open_paper)
+            card.open_file_requested.connect(self._open_paper_file)
+            card.versions_requested.connect(self._show_versions_dialog)
+            card.details_requested.connect(self._open_paper)
             card.drop_files.connect(self._drop_on_paper)
             flow.add(card)
         self.panel.adjustSize()
@@ -424,6 +453,49 @@ class MainWindow(QMainWindow):
             try: self.setWindowIcon(logo_mod.get_icon())
             except Exception: pass
             self.refresh()
+
+    def _open_paper_file(self, pid):
+        """Open the canonical version of this paper in the right app."""
+        paper = self.db.paper_get(pid)
+        if not paper:
+            return
+        versions = self.db.versions_list(pid)
+        if not versions:
+            QMessageBox.information(self, "No file",
+                                    "This paper has no versions yet.")
+            return
+        version = None
+        if paper.get("canonical_id"):
+            version = next((v for v in versions
+                            if v["id"] == paper["canonical_id"]), None)
+        if not version:
+            version = versions[-1]
+
+        file_path = version.get("file_path")
+        if not file_path or not Path(file_path).exists():
+            QMessageBox.warning(
+                self, "File missing",
+                f"The file for {version.get('label','?')} is not on disk:\n"
+                f"{file_path}")
+            return
+
+        from .opener import open_document
+        result = open_document(file_path, self.settings, self)
+        if result is None:
+            QMessageBox.warning(self, "Cannot open",
+                                f"No handler for {file_path}")
+            return
+        self.db.event(pid, version["id"], "opened",
+                      f"{version.get('label','?')} \u2192 {result}")
+
+    def _show_versions_dialog(self, pid):
+        paper = self.db.paper_get(pid)
+        if not paper:
+            return
+        versions = self.db.versions_list(pid)
+        dlg = VersionsDialog(self, pid, paper, versions)
+        dlg.exec()
+        self.refresh()
 
     def _open_paper(self, pid):
         dlg = PaperDetailDialog(self, pid)
@@ -692,3 +764,97 @@ class PaperDetailDialog(QDialog):
                                 f"Locked copy saved:\n  {frozen_submit.name}")
         self._load()
         self.parent_win.refresh()
+
+class VersionsDialog(QDialog):
+    """Pick a version to open, or promote one to final."""
+
+    def __init__(self, parent, pid, paper, versions):
+        super().__init__(parent)
+        self.parent_win = parent
+        self.pid = pid
+        self.paper = paper
+        self.versions = versions
+        title = (paper.get("title") or "Paper")[:40]
+        self.setWindowTitle(f"Versions - {title}")
+        self.setModal(True)
+        from PyQt6.QtWidgets import QApplication
+        scr = QApplication.primaryScreen()
+        if scr is not None:
+            g = scr.availableGeometry()
+            self.resize(min(680, g.width() - 80),
+                        min(500, g.height() - 100))
+        else:
+            self.resize(680, 500)
+        self._build()
+
+    def _build(self):
+        v = QVBoxLayout(self)
+        v.setContentsMargins(16, 16, 16, 16); v.setSpacing(8)
+
+        if not self.versions:
+            v.addWidget(QLabel("This paper has no versions yet."))
+        else:
+            for ver in self.versions:
+                v.addLayout(self._version_row(ver))
+
+        v.addStretch()
+        row = QHBoxLayout(); row.addStretch()
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        row.addWidget(close)
+        v.addLayout(row)
+
+    def _version_row(self, ver):
+        row = QHBoxLayout(); row.setSpacing(8)
+        is_can = (self.paper.get("canonical_id") == ver["id"])
+        is_locked = bool(ver.get("frozen_hash"))
+
+        marks = []
+        if is_can: marks.append("FINAL")
+        if is_locked: marks.append("locked")
+
+        label = ver.get("label") or "v?"
+        if marks:
+            label += "  ·  " + "  ·  ".join(marks)
+
+        lbl = QLabel(label)
+        if is_can:
+            lbl.setStyleSheet("font-weight:700;color:#8b5cf6;")
+        row.addWidget(lbl, 2)
+
+        info = QLabel(
+            f"{ver.get('kind','')}  ·  "
+            f"{(ver.get('size_bytes') or 0)//1024} KB  ·  "
+            f"{ver.get('page_count') or 0} pages")
+        info.setObjectName("Muted")
+        row.addWidget(info, 2)
+
+        open_btn = QPushButton("Open")
+        open_btn.setObjectName("CardBtn")
+        open_btn.setFixedWidth(64)
+        open_btn.clicked.connect(lambda _, vv=ver: self._open_ver(vv))
+        row.addWidget(open_btn, 0)
+
+        if not is_can:
+            mk = QPushButton("Set final")
+            mk.setObjectName("CardBtn")
+            mk.setFixedWidth(80)
+            mk.clicked.connect(lambda _, vv=ver: self._make_final(vv))
+            row.addWidget(mk, 0)
+
+        return row
+
+    def _open_ver(self, ver):
+        from .opener import open_document
+        fp = ver.get("file_path")
+        if not fp or not Path(fp).exists():
+            QMessageBox.warning(self, "Missing", str(fp)); return
+        open_document(fp, self.parent_win.settings, self)
+
+    def _make_final(self, ver):
+        self.parent_win.db.version_set_canonical(self.pid, ver["id"])
+        self.parent_win.db.event(self.pid, ver["id"],
+                                 "canonical_set", ver["label"])
+        self.parent_win.refresh()
+        self.accept()
+

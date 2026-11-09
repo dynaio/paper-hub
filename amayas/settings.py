@@ -21,6 +21,10 @@ class Settings:
         self.path = Path(path)
         self.data = dict(self.DEFAULTS)
         self._load()
+        try:
+            self.migrate_old_statuses()
+        except Exception:
+            pass
 
     def _load(self):
         if self.path.exists():
@@ -88,3 +92,20 @@ class Settings:
     # -------- appearance
     def show_brand_logo(self):
         return bool(self.data.get("show_brand_logo", True))
+
+    # -------- migration
+    _OLD_STATUSES = [
+        "idea", "drafting", "internal_review", "ready", "submitted",
+        "in_review", "revision_requested", "resubmitted", "accepted",
+        "camera_ready", "published", "rejected", "withdrawn", "abandoned"
+    ]
+
+    def migrate_old_statuses(self):
+        """If the current list matches the previous default exactly,
+        drop it so the new config.STATUSES takes effect."""
+        cur = self.data.get("statuses")
+        if isinstance(cur, list) and list(cur) == self._OLD_STATUSES:
+            self.data.pop("statuses", None)
+            self.save()
+            return True
+        return False

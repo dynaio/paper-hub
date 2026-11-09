@@ -79,6 +79,10 @@ QPushButton#Chip:checked { background: #8b5cf6; border-color: #8b5cf6;
     font-weight:700; letter-spacing:.5px; }
 
 #Empty { color:#8a92a3; font-size:14px; padding:80px 0; }
+
+#CardVersion { font-size: 11.5px; color: #8b5cf6; font-weight: 600;
+    letter-spacing: .2px; }
+
 QStatusBar { background:#ffffff; color:#8a92a3;
     border-top:1px solid #e3e6ec; }
 QStatusBar::item { border: none; }
@@ -164,6 +168,10 @@ QPushButton#Chip:checked { background: #bb9af7; border-color: #bb9af7;
     font-weight:700; letter-spacing:.5px; }
 
 #Empty { color:#8a93a6; font-size:14px; padding:80px 0; }
+
+#CardVersion { font-size: 11.5px; color: #bb9af7; font-weight: 600;
+    letter-spacing: .2px; }
+
 QStatusBar { background:#161a21; color:#8a93a6;
     border-top:1px solid #262d3a; }
 QStatusBar::item { border: none; }

@@ -59,7 +59,7 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
 
         # toolbar
-        bar = QWidget(); bar.setObjectName("Toolbar"); bar.setFixedHeight(60)
+        bar = QWidget(); bar.setObjectName("Toolbar"); bar.setFixedHeight(84)
         h = QHBoxLayout(bar); h.setContentsMargins(20, 10, 20, 10); h.setSpacing(10)
 
         h.addWidget(self._brand_label())
@@ -208,11 +208,66 @@ class MainWindow(QMainWindow):
         self.move(g.x() + 10, g.y() + 20)
 
     def _brand_label(self):
-        box = QWidget(); h = QHBoxLayout(box)
-        h.setContentsMargins(0, 0, 0, 0); h.setSpacing(8)
-        lbl = QLabel("amayas"); lbl.setObjectName("Brand")
-        h.addWidget(lbl)
+        """Vertical brand: logo on top, name below. Top-left of toolbar."""
+        box = QWidget()
+        box.setObjectName("BrandBox")
+        v = QVBoxLayout(box)
+        v.setContentsMargins(0, 2, 0, 2)
+        v.setSpacing(2)
+        v.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.brand_logo = QLabel()
+        self.brand_logo.setFixedSize(32, 32)
+        self.brand_logo.setScaledContents(True)
+        self.brand_logo.setObjectName("BrandLogo")
+        self.brand_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        v.addWidget(self.brand_logo, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self.brand_label = QLabel("amayas")
+        self.brand_label.setObjectName("Brand")
+        self.brand_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        v.addWidget(self.brand_label, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self._refresh_brand_logo()
+        self._apply_brand_visibility()
         return box
+
+    def _apply_logo(self):
+        """Reload icon from disk and apply to window + toolbar brand."""
+        try:
+            from . import logo as logo_mod
+            icon = logo_mod.get_icon()
+            self.setWindowIcon(icon)
+            app = QApplication.instance()
+            if app is not None:
+                app.setWindowIcon(icon)
+        except Exception:
+            pass
+        try:
+            self._refresh_brand_logo()
+            self._apply_brand_visibility()
+        except Exception:
+            pass
+
+
+    def _apply_brand_visibility(self):
+        try:
+            show = bool(self.settings.get("show_brand_logo", True))
+            if hasattr(self, "brand_logo"):
+                self.brand_logo.setVisible(show)
+        except Exception:
+            pass
+
+
+    def _refresh_brand_logo(self):
+        try:
+            from . import logo as logo_mod
+            pix = logo_mod.get_pixmap(32)
+            if not pix.isNull():
+                self.brand_logo.setPixmap(pix)
+        except Exception:
+            pass
+
 
     # ---------------------------------------------------------------- theme
     def _apply_theme(self, theme):

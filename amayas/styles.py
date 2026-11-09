@@ -8,8 +8,13 @@ QScrollArea { background: transparent; border: none; }
 QScrollArea > QWidget > QWidget { background: transparent; }
 
 #Toolbar { background: #ffffff; border-bottom: 1px solid #e3e6ec; }
-#Brand { font-size: 22px; font-weight: 800; color: #8b5cf6;
-    letter-spacing: -0.5px; }
+#BrandBox { background: transparent; }
+#BrandBox { background: transparent; }
+#Brand { font-size: 12.5px; font-weight: 800; color: #8b5cf6;
+    letter-spacing: 0.2px; padding: 0; }
+#BrandBox { background: transparent; }
+#Brand { font-size: 12.5px; font-weight: 800; color: #bb9af7;
+    letter-spacing: 0.2px; padding: 0; }
 #Muted { color: #8a92a3; font-size: 12px; }
 
 QLineEdit#Search { background: #f5f6f8; border: 1px solid #e3e6ec;

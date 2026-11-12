@@ -52,9 +52,9 @@ cat > "$DESKTOP_FILE" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Amayas
-GenericName=Paper Companion
-Comment=Research paper vault with hash-locked versions
+Name=Folio
+GenericName=Paper Manager
+Comment=Research paper manager with hash-locked versions
 Exec=$LAUNCHER
 Icon=$ICON
 Terminal=false
@@ -67,10 +67,12 @@ echo "==> Wrote desktop entry to $DESKTOP_FILE"
 
 if [ -w /usr/local/bin ]; then
     ln -sf "$LAUNCHER" /usr/local/bin/amayas
-    echo "==> Linked /usr/local/bin/amayas"
+    ln -sf "$LAUNCHER" /usr/local/bin/folio
+    echo "==> Linked /usr/local/bin/{amayas,folio}"
 else
-    echo "==> Sudo needed for /usr/local/bin/amayas"
+    echo "==> Sudo needed for /usr/local/bin aliases"
     sudo ln -sf "$LAUNCHER" /usr/local/bin/amayas
+    sudo ln -sf "$LAUNCHER" /usr/local/bin/folio
 fi
 
 command -v update-desktop-database >/dev/null 2>&1 && \

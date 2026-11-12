@@ -14,6 +14,7 @@ class Settings:
         "show_cover": True,
         "autolock_on_ready": True,      # when marking ready, lock the file
         "verify_on_submit": True,       # check hash before submission
+        "default_author": "",
         "use_libreoffice": True,        # try to convert docx/pptx for covers
     }
 

@@ -12,9 +12,9 @@ from amayas import logo as logo_mod
 
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("amayas")
-    app.setApplicationDisplayName("Amayas")
-    app.setOrganizationName("amayas")
+    app.setApplicationName("folio")
+    app.setApplicationDisplayName("Folio")
+    app.setOrganizationName("folio")
 
     # icon and .desktop sync
     try:

@@ -21,7 +21,23 @@ def _slug(text: str, n: int = 40) -> str:
 
 
 def paper_folder(paper_id: int, title: str) -> Path:
-    d = FILES_DIR / f"{paper_id:04d}-{_slug(title)}"
+    """Return the folder for this paper. Looks up by ID prefix first so
+    the folder path is stable even if the title changes. Creates a folder
+    only if none exists yet."""
+    prefix = f"{paper_id:04d}-"
+    existing = None
+    try:
+        if FILES_DIR.exists():
+            for entry in FILES_DIR.iterdir():
+                if entry.is_dir() and entry.name.startswith(prefix):
+                    existing = entry
+                    break
+    except OSError:
+        pass
+    if existing is not None:
+        (existing / "attachments").mkdir(exist_ok=True)
+        return existing
+    d = FILES_DIR / f"{prefix}{_slug(title)}"
     d.mkdir(parents=True, exist_ok=True)
     (d / "attachments").mkdir(exist_ok=True)
     return d

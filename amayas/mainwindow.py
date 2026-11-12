@@ -28,7 +28,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.db = Database()
         self.settings = Settings()
-        self.setWindowTitle("Amayas")
+        self.setWindowTitle("Folio - Paper Manager")
         self.setMinimumSize(360, 260)
         self._fit_to_screen(1280, 860)
         try:
@@ -99,6 +99,7 @@ class MainWindow(QMainWindow):
         # drop zone
         self.drop_zone = DropZone()
         self.drop_zone.files_dropped.connect(self._add_files_as_new)
+        self.drop_zone.clicked.connect(self._pick_and_add)
         root.addWidget(self.drop_zone)
 
         # grid
@@ -208,12 +209,11 @@ class MainWindow(QMainWindow):
         self.move(g.x() + 10, g.y() + 20)
 
     def _brand_label(self):
-        """Vertical brand: logo on top, name below. Top-left of toolbar."""
+        """Vertical brand: logo above, name below."""
         box = QWidget()
         box.setObjectName("BrandBox")
         v = QVBoxLayout(box)
-        v.setContentsMargins(0, 2, 0, 2)
-        v.setSpacing(2)
+        v.setContentsMargins(0, 2, 0, 2); v.setSpacing(2)
         v.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.brand_logo = QLabel()
@@ -223,13 +223,23 @@ class MainWindow(QMainWindow):
         self.brand_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         v.addWidget(self.brand_logo, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        self.brand_label = QLabel("amayas")
+        self.brand_label = QLabel("Folio")
         self.brand_label.setObjectName("Brand")
         self.brand_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         v.addWidget(self.brand_label, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        self._refresh_brand_logo()
-        self._apply_brand_visibility()
+        try:
+            from . import logo as logo_mod
+            pix = logo_mod.get_pixmap(32)
+            if not pix.isNull():
+                self.brand_logo.setPixmap(pix)
+        except Exception:
+            pass
+        try:
+            self.brand_label.setVisible(
+                bool(self.settings.get("show_brand_logo", True)))
+        except Exception:
+            pass
         return box
 
     def _apply_logo(self):
@@ -342,8 +352,10 @@ class MainWindow(QMainWindow):
         for p in papers:
             card = PaperCard(p)
             card.open_file_requested.connect(self._open_paper_file)
-            card.versions_requested.connect(self._show_versions_dialog)
             card.details_requested.connect(self._open_paper)
+            card.edit_requested.connect(self._edit_paper)
+            card.add_version_requested.connect(self._add_version_clicked)
+            card.delete_requested.connect(self._delete_paper)
             card.drop_files.connect(self._drop_on_paper)
             flow.add(card)
         self.panel.adjustSize()
@@ -399,9 +411,11 @@ class MainWindow(QMainWindow):
         self._make_cover(dest, pid, title)
 
         # prompt for editing basics
-        dlg = AddPaperDialog(self, title=title, authors=info["authors"],
+        default_auth = self.settings.get("default_author", "")
+        authors = info["authors"] or default_auth
+        dlg = AddPaperDialog(self, title=title, authors=authors,
                              abstract=info["abstract"], venue="",
-                             status="drafting")
+                             status="in_work")
         if dlg.exec() == QDialog.DialogCode.Accepted:
             v = dlg.values()
             self.db.paper_update(pid, **v)
@@ -550,6 +564,106 @@ class MainWindow(QMainWindow):
         versions = self.db.versions_list(pid)
         dlg = VersionsDialog(self, pid, paper, versions)
         dlg.exec()
+        self.refresh()
+
+    def _rebuild_missing_covers(self):
+        """Walk every paper. If its current version is a PDF and the cover
+        is missing, generate it now. Runs once on startup."""
+        try:
+            for paper in self.db.papers_list(status="all"):
+                pid = paper["id"]
+                title = paper.get("title") or ""
+                from .vault import paper_folder
+                try:
+                    folder = paper_folder(pid, title)
+                except Exception:
+                    continue
+                cover_path = folder / "cover.png"
+                if cover_path.exists() and cover_path.stat().st_size > 0:
+                    continue
+                # find a version with a PDF file
+                versions = self.db.versions_list(pid)
+                pdf_file = None
+                for v in versions:
+                    fp = v.get("file_path") or ""
+                    if fp.endswith(".pdf") and Path(fp).exists():
+                        pdf_file = Path(fp)
+                        break
+                if pdf_file is None:
+                    continue
+                try:
+                    self._make_cover(pdf_file, pid, title)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _regenerate_cover_for(self, pid):
+        """Rebuild the cover for one paper (called after edit)."""
+        try:
+            paper = self.db.paper_get(pid)
+            if not paper:
+                return
+            versions = self.db.versions_list(pid)
+            pdf_file = None
+            for v in versions:
+                fp = v.get("file_path") or ""
+                if fp.endswith(".pdf") and Path(fp).exists():
+                    pdf_file = Path(fp)
+                    break
+            if pdf_file is None:
+                return
+            self._make_cover(pdf_file, pid, paper.get("title") or "")
+        except Exception:
+            pass
+
+    def _edit_paper(self, pid):
+        paper = self.db.paper_get(pid)
+        if not paper:
+            return
+        from .edit_paper_dialog import EditPaperDialog
+        dlg = EditPaperDialog(self.db, self.settings, paper, self)
+        dlg.exec()
+        if dlg.changed:
+            self._regenerate_cover_for(pid)
+            self.refresh()
+
+    def _delete_paper(self, pid):
+        paper = self.db.paper_get(pid)
+        if not paper:
+            return
+        ans = QMessageBox.question(
+            self, "Delete paper",
+            f"Remove '{paper.get('title','Untitled')}' from the library?\n\n"
+            "Files stay in ~/Papers/ - only the entry is removed.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        self.db.paper_delete(pid)
+        self.refresh()
+        self.statusBar().showMessage("Paper removed.", 3000)
+
+    def _add_version_clicked(self, pid):
+        """Open file picker to add a version to an existing paper."""
+        paper = self.db.paper_get(pid)
+        if not paper:
+            return
+        from PyQt6.QtWidgets import QFileDialog
+        start = self.settings.get("last_dir") or str(Path.home())
+        files, _ = QFileDialog.getOpenFileNames(
+            self, f"Add version to '{paper.get('title','')[:40]}'",
+            start, "Documents (*)")
+        if not files:
+            return
+        self.settings.set("last_dir", str(Path(files[0]).parent))
+        existing = [v["label"] for v in self.db.versions_list(pid)]
+        for f in files:
+            path = Path(f)
+            if not path.is_file():
+                continue
+            label = next_version_label(existing)
+            self._add_version(pid, paper, path, label)
+            existing.append(label)
         self.refresh()
 
     def _open_paper(self, pid):

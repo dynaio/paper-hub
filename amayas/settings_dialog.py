@@ -336,6 +336,16 @@ class SettingsDialog(QDialog):
         w = QWidget(); v = QVBoxLayout(w)
         v.setContentsMargins(10, 10, 10, 10); v.setSpacing(10)
 
+        v.addWidget(QLabel("Default author (auto-filled on new papers)"))
+        from PyQt6.QtWidgets import QLineEdit as _QLE
+        self.author_edit = _QLE(self.settings.get("default_author", ""))
+        self.author_edit.setPlaceholderText("e.g. Berassil Abdelkader")
+        self.author_edit.textChanged.connect(
+            lambda t: (self.settings.set("default_author", t),
+                       setattr(self, "changed", True)))
+        v.addWidget(self.author_edit)
+        v.addSpacing(8)
+
         v.addWidget(QLabel("Text editor (used for .md, .tex, code)"))
         from PyQt6.QtWidgets import QLineEdit
         self.editor_text = QLineEdit(self.settings.get("editor_text", "subl"))
